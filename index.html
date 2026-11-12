@@ -98,6 +98,10 @@ body.quiet{cursor:none}
   .tog:first-child{padding-left:0}
   .pre{grid-column:2;grid-row:3;justify-content:flex-start}
   .set{grid-column:2;grid-row:4;align-self:start}
+  /* with the rest of the page faded out, its column-2 placement would still hold an implicit column open and leave the circle off to one side: bring everything back to column 1 so only one, centered column remains */
+  body.quiet .wrap{grid-template-columns:1fr;max-width:min(100%,74vh)}
+  body.quiet .stage,body.quiet .bar,body.quiet .pre,body.quiet .set{grid-column:1}
+  body.quiet .stage{margin:0 auto}
 }
 .foot{display:flex;justify-content:center;gap:10px;padding:2px 16px 0;font-size:.8rem;letter-spacing:.04em;color:var(--mute)}
 .foot a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;padding-bottom:1px}
