@@ -98,10 +98,8 @@ body.quiet{cursor:none}
   .tog:first-child{padding-left:0}
   .pre{grid-column:2;grid-row:3;justify-content:flex-start}
   .set{grid-column:2;grid-row:4;align-self:start}
-  /* with the rest of the page faded out, its column-2 placement would still hold an implicit column open and leave the circle off to one side: bring everything back to column 1 so only one, centered column remains */
-  body.quiet .wrap{grid-template-columns:1fr;max-width:min(100%,74vh)}
-  body.quiet .stage,body.quiet .bar,body.quiet .pre,body.quiet .set{grid-column:1}
-  body.quiet .stage{margin:0 auto}
+  /* with the rest of the page faded out, the circle slides to the middle of the whole row instead of staying centered on column 1 alone; recenter() below drives the actual offset, this just makes it glide */
+  .stage{transition:transform 1.6s}
 }
 .foot{display:flex;justify-content:center;gap:10px;padding:2px 16px 0;font-size:.8rem;letter-spacing:.04em;color:var(--mute)}
 .foot a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;padding-bottom:1px}
@@ -505,10 +503,20 @@ body.quiet{cursor:none}
 
   /* a few seconds without a touch while the timer runs, and the page goes quiet */
   let quietTimer = null;
-  function wake() {
-    document.body.classList.remove('quiet'); clearTimeout(quietTimer);
-    if (state === 'running') quietTimer = setTimeout(() => { if (state === 'running') document.body.classList.add('quiet'); }, 4000);
+  const stageEl = $('ring'), wrapEl = document.querySelector('.wrap');
+  /* on a wide screen the circle sits in the left column, centered only within it; sliding the panel away should bring it to the middle of the whole row, not snap there */
+  function recenter(on) {
+    if (!on) { stageEl.style.transform = ''; return; }
+    stageEl.style.transform = '';
+    const s = stageEl.getBoundingClientRect(), w = wrapEl.getBoundingClientRect();
+    const offset = (w.left + w.width / 2) - (s.left + s.width / 2);
+    stageEl.style.transform = Math.abs(offset) > 1 ? `translateX(${offset}px)` : '';
   }
+  function wake() {
+    document.body.classList.remove('quiet'); recenter(false); clearTimeout(quietTimer);
+    if (state === 'running') quietTimer = setTimeout(() => { if (state === 'running') { document.body.classList.add('quiet'); recenter(true); } }, 4000);
+  }
+  window.addEventListener('resize', () => { if (document.body.classList.contains('quiet')) recenter(true); });
   ['pointerdown', 'pointermove', 'keydown', 'touchstart', 'wheel'].forEach(e => window.addEventListener(e, wake, { passive: true }));
   function setState(s) {
     state = s; document.body.dataset.state = s; wake();
