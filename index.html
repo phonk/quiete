@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="quiete: a meditation timer on slow generative ambient, with a breathing seed-head and editable presets.">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>quiete</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500&display=swap">
+<style>
+/* Layout: one quiet column. The session is a seed head of dots that breathes: it opens as you breathe in and closes as you breathe out, and its dots light up from the rim inwards as the time passes. Tap it to start and pause. Under it, two switches and the session folded into one line */
+:root{
+  --bg:#02040F; --ink:#E5DADA; --mute:#968E96; --line:#152139; --amber:#E59500; --wine:#D2577F; --night:#4A8CC4;
+  --font:"Helvetica Neue","IBM Plex Sans",Helvetica,Arial,sans-serif;
+  color-scheme:dark;
+}
+html{font-size:clamp(16px,2.2vmin,24px)}   /* everything is in rem, so the whole page grows on a tablet */
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--font);font-weight:400;font-size:1rem;line-height:1.4;font-variant-numeric:tabular-nums;
+  padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));padding-block:16px 28px}
+#dial{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;display:block}
+.wrap{max-width:min(100%,34rem);margin:0 auto;display:flex;flex-direction:column;gap:1.4rem;position:relative;z-index:1}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:1px solid var(--amber);outline-offset:3px}
+
+header{display:flex;justify-content:space-between;align-items:baseline}
+h1{font-weight:300;font-size:1.5rem;letter-spacing:-.01em;margin:0}
+.titleblock{display:flex;flex-direction:column;gap:2px}
+.tag{font-size:.78rem;color:var(--mute);letter-spacing:.02em}
+#reset{font-size:.8rem;letter-spacing:.04em;color:var(--mute);padding:4px 0}
+#reset:hover{color:var(--ink)}
+
+.stage{display:block;width:100%;max-width:min(100%,56vh);aspect-ratio:1;margin:0 auto;position:relative;border-radius:50%;
+  -webkit-tap-highlight-color:transparent}
+.center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;pointer-events:none}
+#time{font-weight:300;font-size:clamp(2.9rem,9.5vmin,6rem);letter-spacing:-.03em;line-height:1}
+#phase{font-size:.88rem;color:var(--mute);letter-spacing:.02em;min-height:1.3em;text-transform:lowercase}
+body[data-state="paused"] #time{color:var(--mute)}
+body[data-state="finished"] #time{color:var(--wine)}
+
+/* under the circle: the music switch, always within reach */
+.bar{display:flex;justify-content:center;gap:1.2rem;margin-top:-8px;flex-wrap:wrap}
+.tog{font-size:.92rem;letter-spacing:.04em;color:var(--amber);padding:8px 14px}
+.tog[aria-pressed="false"]{color:var(--mute)}
+.tog:hover{color:var(--ink)}
+
+/* presets: named sessions. Tap one to load it; what you change while it is selected is saved into it */
+.pre{display:flex;justify-content:center;flex-wrap:wrap;gap:.3rem 1.2rem;font-size:.92rem;transition:opacity .4s}
+.pre button{color:var(--mute);padding:6px 0;border-bottom:1px solid transparent;letter-spacing:.02em}
+.pre button:hover{color:var(--ink)}
+.pre button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--amber)}
+.pre .add{font-size:.8rem;letter-spacing:.04em}
+body[data-state="running"] .pre,body[data-state="paused"] .pre{opacity:.3;pointer-events:none}
+#pname{width:9em;text-align:right}
+#pdel{color:var(--mute)}
+#pdel:hover,#pdel.sure{color:var(--wine)}
+
+/* the session, folded into one line; open it to change it */
+.set{transition:opacity .4s;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+body[data-state="running"] .set,body[data-state="paused"] .set{opacity:.3;pointer-events:none}
+.set summary{list-style:none;display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 0;cursor:pointer;font-size:.92rem}
+.set summary::-webkit-details-marker{display:none}
+.set summary .lab{color:var(--mute);letter-spacing:.04em;font-size:.8rem}
+.set summary:hover .lab{color:var(--amber)}
+.set[open] summary .lab::after{content:" \2212"}
+.set:not([open]) summary .lab::after{content:" +"}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line);font-size:.92rem;flex-wrap:wrap}
+.row .name{color:var(--ink)}
+.step{display:flex;align-items:center;gap:6px}
+.step button{width:2rem;height:2rem;border-radius:50%;color:var(--mute);font-size:1.1rem;line-height:1}
+.step button:hover{color:var(--amber)}
+.step b{font-weight:400;min-width:3.6em;text-align:center}
+.step b i{font-style:normal;color:var(--mute);font-size:.8rem;margin-left:3px}
+.at{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:.85rem}
+.at input{width:2.6em;background:none;border:0;border-bottom:1px solid var(--line);color:var(--ink);font:inherit;text-align:center;padding:2px 0;-moz-appearance:textfield;appearance:textfield}
+.at input::-webkit-outer-spin-button,.at input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.at button{color:var(--amber);letter-spacing:.04em;padding:6px 0 6px 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px 14px;width:100%;font-size:.85rem;color:var(--mute)}
+.chips button{color:var(--mute);padding:2px 0}
+.chips button:hover{color:var(--wine)}
+.chips:empty{display:none}
+.hear{display:flex;justify-content:center;gap:22px;font-size:.8rem;letter-spacing:.04em;color:var(--mute);padding:10px 0 12px;border-top:1px solid var(--line)}
+.hear button:hover{color:var(--amber)}
+
+/* left alone during a session, everything but the breathing shape fades away, the time too; any touch brings it back */
+header,.bar,.foot,.center{transition:opacity .3s}
+body.quiet header,body.quiet .bar,body.quiet .pre,body.quiet .set,body.quiet .foot{opacity:0;pointer-events:none;transition:opacity 1.6s}
+body.quiet .center{opacity:0;transition:opacity 1.6s}
+body.quiet{cursor:none}
+
+/* wide and low, like a tablet on its side: the circle on the left, everything else beside it */
+@media (min-width:900px) and (orientation:landscape){
+  .wrap{max-width:min(100%,66rem);display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);column-gap:4rem;row-gap:1.2rem;align-items:center}
+  header,.foot{grid-column:1/-1}
+  .stage{grid-column:1;grid-row:2 / span 3;max-width:min(100%,74vh)}
+  .bar{grid-column:2;grid-row:2;align-self:end;justify-content:flex-start;margin-top:0}
+  .tog:first-child{padding-left:0}
+  .pre{grid-column:2;grid-row:3;justify-content:flex-start}
+  .set{grid-column:2;grid-row:4;align-self:start}
+}
+.foot{display:flex;justify-content:center;gap:10px;padding:2px 16px 0;font-size:.8rem;letter-spacing:.04em;color:var(--mute)}
+.foot a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;padding-bottom:1px}
+.foot a:hover,.foot a:focus-visible{color:var(--amber);border-bottom-color:currentColor;outline:none}
+</style>
+</head>
+<body>
+
+<canvas id="dial" aria-hidden="true"></canvas>
+<div class="wrap">
+  <header>
+    <div class="titleblock">
+      <h1>quiete</h1>
+      <span class="tag">a meditation timer on slow ambient</span>
+    </div>
+    <button id="reset" type="button" hidden>reset</button>
+  </header>
+
+  <button class="stage" id="ring" type="button" aria-label="Start the session">
+    <span class="center"><span id="time">2:00</span><span id="phase">tap to begin</span></span>
+  </button>
+
+  <div class="bar"><button type="button" class="tog" id="breath" aria-pressed="true">breath on</button><button type="button" class="tog" id="music" aria-pressed="true">music on</button></div>
+
+  <nav class="pre" id="presets" aria-label="Presets"></nav>
+
+  <details class="set" id="setup">
+    <summary><span id="sum">2 + 15 + 2 min</span><span class="lab">session</span></summary>
+    <div class="row"><label class="name" for="pname">preset name</label>
+      <span class="at"><input id="pname" type="text" maxlength="18" autocomplete="off" spellcheck="false"><button type="button" id="pdel">delete</button></span></div>
+    <div class="row"><span class="name">settling in</span>
+      <span class="step"><button type="button" data-p="acc" data-d="-1" aria-label="Shorter settling in">&minus;</button><b><span id="accVal">2</span><i>min</i></b><button type="button" data-p="acc" data-d="1" aria-label="Longer settling in">+</button></span></div>
+    <div class="row"><span class="name">meditation</span>
+      <span class="step"><button type="button" data-p="med" data-d="-1" aria-label="Shorter meditation">&minus;</button><b><span id="medVal">15</span><i>min</i></b><button type="button" data-p="med" data-d="1" aria-label="Longer meditation">+</button></span></div>
+    <div class="row"><span class="name">coming back</span>
+      <span class="step"><button type="button" data-p="emerge" data-d="-1" aria-label="Shorter coming back">&minus;</button><b><span id="emergeVal">2</span><i>min</i></b><button type="button" data-p="emerge" data-d="1" aria-label="Longer coming back">+</button></span></div>
+    <div class="row"><span class="name">a bell every</span>
+      <span class="step"><button type="button" data-p="every" data-d="-1" aria-label="Bells less often, or off">&minus;</button><b id="everyVal">off</b><button type="button" data-p="every" data-d="1" aria-label="Bells more often">+</button></span></div>
+    <div class="row"><span class="name">a bell at</span>
+      <span class="at"><input id="markMin" type="number" min="0" max="180" value="5" inputmode="numeric" aria-label="Minutes into the meditation">min
+        <input id="markSec" type="number" min="0" max="59" value="0" inputmode="numeric" aria-label="Seconds">sec<button type="button" id="addMark">add</button></span>
+      <span class="chips" id="chips"></span></div>
+    <div class="hear"><button type="button" id="hearMid">hear the bell</button><button type="button" id="hearEnd">hear the last bell</button></div>
+  </details>
+
+  <footer class="foot"><a href="https://phonk.github.io/" target="_blank" rel="noopener">phonk</a></footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const ss = (a, b, x) => { if (b <= a) return x >= b ? 1 : 0; const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
+  /* open chords, neither sad nor bright: root, fifth, ninth, counted in semitones from the root */
+  const VOICINGS = [[0, 7, 12, 19], [0, 7, 14, 19], [-12, 0, 7, 14], [0, 7, 12, 14]];
+  const MELS = [[14, 12], [14, 16], [12, 14, 19, 14], [7, 9], [19, 17]];   /* one voice that moves, very slowly */
+  const FLOOR = [[0], [0], [0, 0, 0, -5], [0, 0, -2, 0]];
+
+  /* ---------- the session, as in Natural Timer ---------- */
+  const BLANK = { name: 'preset', acc: 120, med: 900, emerge: 120, every: 0, marks: [], music: true, breath: true };
+  let P = { cur: 1, list: [
+    { name: 'short', acc: 60, med: 300, emerge: 60 },
+    { name: 'daily', acc: 120, med: 900, emerge: 120 },
+    { name: 'long', acc: 180, med: 1800, emerge: 180, every: 600 }] };
+  try {
+    const q = JSON.parse(localStorage.getItem('quiete2') || 'null');
+    if (q && Array.isArray(q.list) && q.list.length) P = q;
+    else { const old = JSON.parse(localStorage.getItem('quiete') || 'null'); if (old && old.med) Object.assign(P.list[1], old); }   /* what you had set before presets */
+  } catch (e) {}
+  P.list = P.list.slice(0, 8).map(p => Object.assign({}, BLANK, p, { marks: Array.isArray(p.marks) ? p.marks.slice() : [] }));
+  P.cur = clamp(P.cur | 0, 0, P.list.length - 1);
+  let S = P.list[P.cur];   /* the session on screen is always the selected preset: change it and the preset changes */
+  const save = () => { try { localStorage.setItem('quiete2', JSON.stringify(P)); } catch (e) {} };
+  const total = () => S.acc + S.med + S.emerge;
+  function bells() {   /* seconds into the meditation phase */
+    const out = new Set(S.marks.filter(m => m > 0 && m < S.med));
+    if (S.every) for (let t = S.every; t < S.med; t += S.every) out.add(t);
+    return [...out].sort((a, b) => a - b);
+  }
+  const fmt = sec => { sec = Math.max(0, Math.ceil(sec - 0.001)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+
+  let state = 'idle', ac = null, tStart = 0, fired = new Set(), frozen = 0;
+  let mix, master, musicGain, musicLP, bellBus, noiseBuf, irBuf, decks = [], cur = 0, curL = 88, curT = 16, bar = 0, nextBar = 0, barDur = 4.3;
+  let worker = null, fallbackTimer = null, silentEl = null, closeTimer = null, depth = 0, lastDepth = -9;
+
+  /* ---------- sound ---------- */
+  function makeNoise(c, seconds) {
+    const b = c.createBuffer(1, c.sampleRate * seconds, c.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  }
+  function makeImpulse(c, seconds) {
+    const sr = c.sampleRate, n = Math.floor(sr * seconds), b = c.createBuffer(2, n, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = b.getChannelData(ch); let y = 0;
+      for (let i = Math.floor(sr * 0.02); i < n; i++) {
+        const t = i / sr, v = (Math.random() * 2 - 1) * Math.exp(-t * 0.72), a = 0.4 * Math.exp(-t * 0.6) + 0.04;
+        y += a * (v - y); d[i] = y;
+      }
+    }
+    return b;
+  }
+  /* the bell of Natural Timer: five inharmonic partials that die at different speeds */
+  function bell(c, dest, at, strength, durMult) {
+    const now = Math.max(at, c.currentTime + 0.01), m = c.createGain();
+    m.gain.value = 0.3 * strength; m.connect(dest);
+    [1, 2.42, 3.61, 5.19, 7.02].forEach((p, i) => {
+      const o = c.createOscillator(), g = c.createGain(), dur = (3.2 + i * 0.35) * durMult;
+      o.type = 'sine'; o.frequency.value = 210 * p * (1 + (Math.random() - 0.5) * 0.006);
+      g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime([1, 0.5, 0.32, 0.18, 0.1][i] * 0.85, now + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      o.connect(g); g.connect(m); o.start(now); o.stop(now + dur + 0.1);
+    });
+  }
+  const bellMid = (c, d, t) => bell(c, d, t, 0.8, 0.32);
+  const bellPhase = (c, d, t) => bell(c, d, t, 1.05, 0.7);
+  const bellEnd = (c, d, t) => { bell(c, d, t, 1.4, 1.5); bell(c, d, t + 0.55, 1.1, 1.2); };
+
+  /* a deck: one piece of music. Pads whose voices swell on their own, a low drone, far wind. No beat */
+  class Deck {
+    constructor() {
+      const g = v => { const n = ac.createGain(); n.gain.value = v; return n; };
+      this.g = g;
+      this.out = g(0); this.lp = ac.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = 16000; this.lp.Q.value = 0.5;
+      this.pre = g(1); this.pre.connect(this.lp); this.lp.connect(this.out); this.out.connect(musicLP);
+      this.padBus = g(1);
+      const warb = ac.createDelay(0.2); warb.delayTime.value = 0.03;
+      [[rnd(0.25, 0.4), 0.0016], [rnd(0.05, 0.09), 0.004]].forEach(([f, d]) => { const o = ac.createOscillator(), og = g(d); o.frequency.value = f; o.connect(og); og.connect(warb.delayTime); o.start(); });
+      this.padBus.connect(warb); warb.connect(this.pre);
+      this.rev = ac.createConvolver(); this.rev.buffer = irBuf;
+      this.revIn = g(0.55); warb.connect(this.revIn); this.revIn.connect(this.rev);
+      { const o = g(0.65); this.rev.connect(o); o.connect(this.pre); }
+      this.track = null; this.voices = []; this.live = [];
+    }
+    load(tr, b, t, fadeBars) {
+      this.track = tr; this.startBar = b; this.bn = null; this.mn = null;
+      const fade = fadeBars * barDur, o = this.out.gain, f = this.lp.frequency;
+      o.cancelScheduledValues(t); o.setValueAtTime(0.0001, t); o.linearRampToValueAtTime(1, t + fade);
+      f.cancelScheduledValues(t); f.setValueAtTime(300, t); f.exponentialRampToValueAtTime(16000, t + fade);
+      const g = this.g; this.voices = []; this.live = [];
+      const notes = tr.voicing.map(n => ({ n, mel: false })).concat([{ n: tr.mel[0], mel: true }]);
+      const lv = 0.2 / Math.sqrt(notes.length);
+      for (const { n, mel } of notes) {
+        const fl = ac.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = tr.padCut * (mel ? 1.4 : 1); fl.Q.value = 0.6;
+        const vg = g(lv * 0.5), per = rnd(24, 60), ts = t + rnd(0, per * 0.5);
+        const lf = ac.createOscillator(), lg = g(lv * 0.5); lf.frequency.value = 1 / per; lf.connect(lg); lg.connect(vg.gain); lf.start(ts);
+        const oscs = [-1, 1].map(s => { const o = ac.createOscillator(); o.type = s > 0 ? 'triangle' : 'sawtooth'; o.frequency.value = mtof(tr.base + n); o.detune.value = s * rnd(3, 7); o.connect(fl); o.start(t); return o; });
+        fl.connect(vg); vg.connect(this.padBus);
+        this.voices.push({ n, mel, per, ts, f: fl, oscs }); this.live.push(lf, ...oscs);
+      }
+      this.sub = ac.createOscillator(); this.sub2 = ac.createOscillator();
+      const s2 = g(0.15), sg = g(0.1), slp = ac.createBiquadFilter(); slp.type = 'lowpass'; slp.frequency.value = 200;
+      const sl = ac.createOscillator(), slg = g(0.035); sl.frequency.value = 1 / rnd(30, 55); sl.connect(slg); slg.connect(sg.gain);
+      this.sub.connect(sg); this.sub2.connect(s2); s2.connect(sg); sg.connect(slp); slp.connect(this.pre);
+      this.sub.start(t); this.sub2.start(t); sl.start(t); this.live.push(this.sub, this.sub2, sl);
+      if (tr.wind) {
+        const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+        const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = tr.windF; bp.Q.value = 1.2;
+        const wg = g(tr.wind * 0.6), a = ac.createOscillator(), ag = g(tr.wind * 0.4); a.frequency.value = 1 / rnd(18, 45); a.connect(ag); ag.connect(wg.gain);
+        src.connect(bp); bp.connect(wg); wg.connect(this.pre); wg.connect(this.revIn);
+        src.start(t, Math.random()); a.start(t); this.live.push(src, a);
+      }
+    }
+    beginOut(t, fadeBars) {
+      const d = fadeBars * barDur, o = this.out.gain, f = this.lp.frequency;
+      o.cancelScheduledValues(t); o.setValueAtTime(1, t); o.linearRampToValueAtTime(0.85, t + d * 0.4); o.linearRampToValueAtTime(0.0001, t + d);
+      f.cancelScheduledValues(t); f.setValueAtTime(16000, t); f.exponentialRampToValueAtTime(400, t + d);
+    }
+    end(t) { this.live.forEach(n => { try { n.stop(t + 0.5); } catch (e) {} }); this.live = []; this.voices = []; this.track = null; }
+    onBar(b, t) {
+      const tr = this.track; if (!tr) return;
+      const rb = b - this.startBar;
+      let bn = tr.bassBase + tr.floor[Math.floor(rb / 8) % tr.floor.length]; if (bn < 29) bn += 12;
+      if (bn !== this.bn) {
+        const first = this.bn === null; this.bn = bn;
+        if (first) { this.sub.frequency.setValueAtTime(mtof(bn), t); this.sub2.frequency.setValueAtTime(mtof(bn + 12), t); }
+        else { this.sub.frequency.setTargetAtTime(mtof(bn), t, 0.6); this.sub2.frequency.setTargetAtTime(mtof(bn + 12), t, 0.6); }
+      }
+      const mn = tr.mel[Math.floor(rb / tr.melBars) % tr.mel.length];
+      if (mn !== this.mn) { this.mn = mn; const v = this.voices.find(q => q.mel); if (v) { v.n = mn; v.oscs.forEach(o => o.frequency.setTargetAtTime(mtof(tr.base + mn), t, 0.8)); } }
+      const drift = Math.pow(2, 0.4 * Math.sin(t / tr.p2) + 0.2 * Math.sin(t / tr.p1 + 1));
+      this.voices.forEach(v => v.f.frequency.setTargetAtTime(tr.padCut * (v.mel ? 1.4 : 1) * drift, t, 2));
+    }
+  }
+  function newTrack(prevRoot) {
+    const root = prevRoot == null ? Math.floor(Math.random() * 12) : (prevRoot + pick([0, 7, 5, 5, 7, 2, 10])) % 12;
+    let bassBase = 36 + root; if (bassBase > 43) bassBase -= 12;
+    return { root, base: root <= 5 ? 48 + root : 36 + root, bassBase, voicing: pick(VOICINGS), mel: pick(MELS), melBars: pick([8, 12, 16]), floor: pick(FLOOR),
+      padCut: rnd(340, 620), p1: rnd(11, 19), p2: rnd(27, 41), wind: Math.random() < 0.8 ? rnd(0.015, 0.035) : 0, windF: rnd(300, 900) };
+  }
+  function musicBar(t) {
+    let c = decks[cur];
+    if (!c.track) { curT = pick([16, 24]); curL = pick([72, 88, 104]); c.load(newTrack(null), bar, t, 3); }
+    let rel = bar - c.startBar;
+    if (rel === curL) { c.end(t); cur = 1 - cur; c = decks[cur]; curT = pick([16, 24]); curL = pick([72, 88, 104]); rel = bar - c.startBar; }
+    if (rel === curL - curT) { decks[1 - cur].load(newTrack(c.track.root), bar, t, curT); c.beginOut(t, curT); }
+    decks[0].onBar(bar, t); decks[1].onBar(bar, t);
+  }
+
+  /* how deep the session is: 0 while settling in and coming back, 1 during the meditation. The music follows it */
+  function depthAt(el) {
+    const a = S.acc, m = a + S.med, w = Math.min(30, S.acc || 30);
+    if (el < a) return ss(a - w, a, el);
+    if (el < m) return 1;
+    return 1 - ss(m, m + 30, el);
+  }
+  const sessionTime = () => (state === 'running' && ac ? ac.currentTime - tStart : frozen);
+
+  function tick() {
+    if (!ac || ac.state !== 'running' || (state !== 'running' && state !== 'finished')) return;
+    const now = ac.currentTime;
+    while (nextBar < now + 2) { musicBar(nextBar); nextBar += barDur; bar++; }
+    if (state !== 'running') return;
+    const el = now - tStart, T = total(), a = S.acc, m = a + S.med;
+    const due = (at, key, fn) => { if (!fired.has(key) && el + 0.4 >= at) { fired.add(key); fn(ac, bellBus, tStart + at); } };
+    due(a, 'in', bellPhase);
+    if (S.emerge > 0) due(m, 'out', bellPhase);
+    bells().forEach(s => due(a + s, 'b' + s, bellMid));
+    due(T, 'end', bellEnd);
+    if (now - lastDepth > 1) {
+      lastDepth = now; depth = depthAt(el);
+      musicGain.gain.setTargetAtTime(S.music ? lerp(1, 0.55, depth) : 0, now, 5);
+      musicLP.frequency.setTargetAtTime(lerp(8000, 1700, depth), now, 5);
+    }
+    if (el >= T) finish();
+  }
+
+  function silentWav() {
+    const n = 4410, b = new Uint8Array(44 + n * 2), v = new DataView(b.buffer);
+    const w = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 44100, true); v.setUint32(28, 88200, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+    let t = ''; for (let i = 0; i < b.length; i++) t += String.fromCharCode(b[i]);
+    return 'data:audio/wav;base64,' + btoa(t);
+  }
+  function media(on) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      if (on) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: 'quiete', artist: 'a meditation timer on slow ambient' });
+        navigator.mediaSession.setActionHandler('play', () => { if (state === 'paused') resume(); });
+        navigator.mediaSession.setActionHandler('pause', () => { if (state === 'running') pause(); });
+      }
+      navigator.mediaSession.playbackState = on ? 'playing' : 'paused';
+    } catch (e) {}
+  }
+  function keepAlive(on) {
+    try {
+      if (on) { silentEl = silentEl || new Audio(silentWav()); silentEl.loop = true; silentEl.setAttribute('playsinline', ''); silentEl.volume = 0.01; silentEl.play().catch(() => {}); }
+      else if (silentEl) silentEl.pause();
+    } catch (e) {}
+    media(on);
+  }
+  function engineOff(fade) {
+    clearTimeout(closeTimer);
+    if (worker) { worker.terminate(); worker = null; }
+    clearInterval(fallbackTimer);
+    const old = ac, m = master; ac = null; decks = [];
+    if (old) { try { if (old.state === 'running') m.gain.setTargetAtTime(0, old.currentTime, fade / 3); } catch (e) {} setTimeout(() => old.close().catch(() => {}), fade * 1000 + 300); }
+    keepAlive(false);
+  }
+
+  /* ---------- transport: tap the ring ---------- */
+  function start() {
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
+    ac.resume(); keepAlive(true);
+    noiseBuf = makeNoise(ac, 2); irBuf = makeImpulse(ac, 7);
+    const g = v => { const n = ac.createGain(); n.gain.value = v; return n; };
+    master = g(0); master.connect(ac.destination); master.gain.setTargetAtTime(0.9, ac.currentTime, 0.2);
+    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 14; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.4;
+    const tl = ac.createBiquadFilter(); tl.type = 'lowpass'; tl.frequency.value = 7000; tl.Q.value = -3;
+    const th = ac.createBiquadFilter(); th.type = 'highpass'; th.frequency.value = 24; th.Q.value = 0.5;
+    mix = g(1); mix.connect(tl); tl.connect(th); th.connect(comp); comp.connect(master);
+    musicLP = ac.createBiquadFilter(); musicLP.type = 'lowpass'; musicLP.frequency.value = 8000; musicLP.Q.value = -3;
+    musicGain = g(0); musicLP.connect(musicGain); musicGain.connect(mix);
+    musicGain.gain.setTargetAtTime(S.music ? 1 : 0, ac.currentTime, 6);   /* the music comes in slowly */
+    { const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true; const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2600; const l = g(0.014); src.connect(f); f.connect(l); l.connect(musicLP); src.start(); }
+    bellBus = g(1); bellBus.connect(master);
+    { const r = ac.createConvolver(); r.buffer = irBuf; const s = g(0.22); bellBus.connect(s); s.connect(r); r.connect(master); }
+    rot0 = rnd(0, TAU);
+    decks = [new Deck(), new Deck()]; cur = 0; bar = 0; barDur = 60 / rnd(52, 60) * 4;
+    tStart = ac.currentTime + 0.15; nextBar = tStart; fired = new Set(); depth = 0; lastDepth = -9;
+    try {
+      const code = "let i;onmessage=e=>{clearInterval(i);if(e.data==='go')i=setInterval(()=>postMessage(0),100)}";
+      worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); worker.onmessage = tick; worker.postMessage('go');
+    } catch (e) { worker = null; fallbackTimer = setInterval(tick, 100); }
+    setState('running'); tick(); requestAnimationFrame(draw);
+  }
+  function pause() {
+    if (!ac) return;
+    frozen = ac.currentTime - tStart; setState('paused');
+    master.gain.setTargetAtTime(0, ac.currentTime, 0.15);
+    const c = ac; setTimeout(() => { if (state === 'paused' && ac === c) c.suspend(); }, 700);
+    keepAlive(false);
+  }
+  function resume() {
+    if (!ac) return;
+    keepAlive(true);
+    ac.resume().then(() => { tStart = ac.currentTime - frozen; master.gain.setTargetAtTime(0.9, ac.currentTime, 0.3); setState('running'); requestAnimationFrame(draw); });
+  }
+  function finish() {
+    frozen = total(); setState('finished');
+    musicGain.gain.setTargetAtTime(0, ac.currentTime, 7);   /* the music leaves slowly, under the last bell */
+    closeTimer = setTimeout(() => { if (state === 'finished') engineOff(1); }, 32000);
+  }
+  function reset() { engineOff(0.5); frozen = 0; depth = 0; setState('idle'); }
+  $('ring').addEventListener('click', () => {
+    if (state === 'idle') start(); else if (state === 'running') pause(); else if (state === 'paused') resume(); else reset();
+  });
+  $('reset').addEventListener('click', reset);
+  /* back from a locked screen with the audio stuck: fall back to a pause, so one tap carries on */
+  async function onReturn() {
+    if (document.hidden || state !== 'running' || !ac || ac.state === 'running') return;
+    const c = ac, ok = await Promise.race([c.resume().then(() => true, () => false), new Promise(r => setTimeout(() => r(false), 400))]);
+    if (!(ok && c.state === 'running') && state === 'running' && ac === c) { frozen = c.currentTime - tStart; setState('paused'); keepAlive(false); }
+  }
+  document.addEventListener('visibilitychange', onReturn); window.addEventListener('pageshow', onReturn); window.addEventListener('focus', onReturn);
+
+  /* ---------- settings ---------- */
+  const EVERY = [0, 60, 120, 180, 300, 600, 900, 1200, 1800];
+  const locked = () => state === 'running' || state === 'paused';
+  function pick1(i) { if (locked()) return; P.cur = i; S = P.list[i]; save(); showSettings(); }
+  function showPresets() {
+    const nav = $('presets'); nav.textContent = '';
+    P.list.forEach((p, i) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = p.name || 'untitled';
+      b.setAttribute('aria-pressed', i === P.cur ? 'true' : 'false'); b.addEventListener('click', () => pick1(i)); nav.appendChild(b);
+    });
+    if (P.list.length < 8) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'add'; b.textContent = '+ new'; b.setAttribute('aria-label', 'New preset from this session');
+      b.addEventListener('click', () => {
+        if (locked()) return;
+        P.list.push(Object.assign({}, S, { name: 'new', marks: S.marks.slice() })); pick1(P.list.length - 1);
+        $('setup').open = true; const n = $('pname'); n.focus(); n.select();
+      });
+      nav.appendChild(b);
+    }
+    if (document.activeElement !== $('pname')) $('pname').value = S.name;
+    $('pdel').hidden = P.list.length < 2; $('pdel').classList.remove('sure'); $('pdel').textContent = 'delete';
+  }
+  $('pname').addEventListener('input', e => { S.name = e.target.value.slice(0, 18); save(); showPresets(); });
+  /* delete asks once, in place: the first tap arms it, the second does it */
+  let sureTimer = null;
+  $('pdel').addEventListener('click', e => {
+    const b = e.currentTarget;
+    if (!b.classList.contains('sure')) { b.classList.add('sure'); b.textContent = 'delete, sure?'; clearTimeout(sureTimer); sureTimer = setTimeout(showPresets, 3000); return; }
+    clearTimeout(sureTimer); P.list.splice(P.cur, 1); P.cur = Math.min(P.cur, P.list.length - 1); S = P.list[P.cur]; save(); showSettings();
+  });
+  function showSettings() {
+    showPresets();
+    $('accVal').textContent = S.acc / 60; $('medVal').textContent = S.med / 60; $('emergeVal').textContent = S.emerge / 60;
+    $('everyVal').innerHTML = S.every ? (S.every / 60) + '<i>min</i>' : 'off';
+    $('music').setAttribute('aria-pressed', S.music ? 'true' : 'false'); $('music').textContent = S.music ? 'music on' : 'music off';
+    $('breath').setAttribute('aria-pressed', S.breath ? 'true' : 'false'); $('breath').textContent = S.breath ? 'breath on' : 'breath off';
+    { const n = bells().length; $('sum').textContent = [S.acc, S.med, S.emerge].map(v => v / 60).join(' + ') + ' min' + (n ? ', ' + n + (n > 1 ? ' bells' : ' bell') : ''); }
+    const chips = $('chips'); chips.textContent = '';
+    S.marks.slice().sort((a, b) => a - b).forEach(m => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = fmt(m) + ' ×'; b.setAttribute('aria-label', 'Remove the bell at ' + fmt(m));
+      b.addEventListener('click', () => { S.marks = S.marks.filter(q => q !== m); save(); showSettings(); });
+      chips.appendChild(b);
+    });
+    if (state === 'idle') show(); draw();
+  }
+  document.querySelectorAll('.step button').forEach(b => b.addEventListener('click', () => {
+    if (state !== 'idle' && state !== 'finished') return;
+    const p = b.dataset.p, d = +b.dataset.d;
+    if (p === 'acc') S.acc = clamp(S.acc / 60 + d, 0, 30) * 60;
+    else if (p === 'med') S.med = clamp(S.med / 60 + d, 1, 180) * 60;
+    else if (p === 'emerge') S.emerge = clamp(S.emerge / 60 + d, 0, 30) * 60;
+    else S.every = EVERY[clamp(Math.max(0, EVERY.indexOf(S.every)) + d, 0, EVERY.length - 1)];
+    save(); showSettings();
+  }));
+  $('addMark').addEventListener('click', () => {
+    const m = (parseInt($('markMin').value, 10) || 0) * 60 + (parseInt($('markSec').value, 10) || 0);
+    if (m > 0 && m < S.med && !S.marks.includes(m)) { S.marks.push(m); save(); showSettings(); }
+  });
+  $('music').addEventListener('click', () => {
+    S.music = !S.music; save(); showSettings();
+    if (ac && state === 'running') musicGain.gain.setTargetAtTime(S.music ? lerp(1, 0.55, depth) : 0, ac.currentTime, 1.5);
+  });
+  $('breath').addEventListener('click', () => { S.breath = !S.breath; save(); showSettings(); });
+  /* previews use a small context of their own, so they work before a session starts */
+  let pv = null;
+  function preview(fn) { try { pv = pv || new (window.AudioContext || window.webkitAudioContext)(); pv.resume(); fn(pv, pv.destination, pv.currentTime + 0.03); } catch (e) {} }
+  $('hearMid').addEventListener('click', () => preview(bellMid));
+  $('hearEnd').addEventListener('click', () => preview(bellEnd));
+
+  /* ---------- what you see ---------- */
+  const cv = $('dial'), g2 = cv.getContext('2d'), ring = $('ring');
+  const css = getComputedStyle(document.documentElement), col = n => css.getPropertyValue('--' + n).trim();
+  const INK = col('ink'), AMBER = col('amber'), WINE = col('wine'), NIGHT = col('night'), MUTE = col('mute');
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches, TAU = Math.PI * 2, TOP = -Math.PI / 2;
+  let W = 0, H = 0;
+
+  /* a few seconds without a touch while the timer runs, and the page goes quiet */
+  let quietTimer = null;
+  function wake() {
+    document.body.classList.remove('quiet'); clearTimeout(quietTimer);
+    if (state === 'running') quietTimer = setTimeout(() => { if (state === 'running') document.body.classList.add('quiet'); }, 4000);
+  }
+  ['pointerdown', 'pointermove', 'keydown', 'touchstart', 'wheel'].forEach(e => window.addEventListener(e, wake, { passive: true }));
+  function setState(s) {
+    state = s; document.body.dataset.state = s; wake();
+    $('reset').hidden = s === 'idle';
+    ring.setAttribute('aria-label', { idle: 'Start the session', running: 'Pause', paused: 'Carry on', finished: 'Back to the start' }[s]);
+    show(); if (s !== 'running') requestAnimationFrame(draw);
+  }
+  function show() {
+    const el = sessionTime(), a = S.acc, m = a + S.med, T = total();
+    let left, label;
+    if (state === 'idle') { left = S.acc || S.med; label = 'tap to begin'; }
+    else if (state === 'finished') { left = 0; label = 'session complete'; }
+    else if (el < a) { left = a - el; label = 'settling in'; }
+    else if (el < m) { left = m - el; label = 'meditation'; }
+    else { left = T - el; label = 'coming back'; }
+    /* for the first two breaths, say it in words; after that the circle is enough */
+    if (state === 'running' && S.breath && el < 22) label = el % 11 < 5 ? 'breathe in' : 'breathe out';
+    if (state === 'paused') label = 'paused';
+    $('time').textContent = fmt(left); $('phase').textContent = label;
+  }
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+  /* the seed head: dots on a golden-angle spiral, with a clearing in the middle for the time. Each dot is an equal slice of the session */
+  const N = 377, I0 = 140, GA = Math.PI * (3 - Math.sqrt(5)), RMIN = Math.sqrt(I0 / (I0 + N));
+  const IN = 5, OUT = 6;   /* about five and a half breaths a minute, with the out-breath a little longer */
+  let rot0 = 0.6, bv = 0.5;
+  function breathAt(el) {   /* 0 = breathed out, 1 = breathed in */
+    const p = ((el % (IN + OUT)) + IN + OUT) % (IN + OUT);
+    return p < IN ? 0.5 - 0.5 * Math.cos(Math.PI * p / IN) : 0.5 + 0.5 * Math.cos(Math.PI * (p - IN) / OUT);
+  }
+  function draw() {
+    if (!W) return;
+    const box = ring.getBoundingClientRect(), cx = box.left + box.width / 2, cy = box.top + box.height / 2, R = box.width * 0.5;
+    const el = sessionTime(), T = total(), frac = state === 'idle' ? 0 : clamp(el / T, 0, 1);
+    /* running: follow the breath. Finished: stay open. Otherwise rest half-open */
+    const target = state === 'finished' ? 1 : !S.breath ? 0.8 : state === 'running' || state === 'paused' ? breathAt(el) : 0.5;
+    bv = state === 'running' && S.breath ? target : bv + (target - bv) * 0.06;
+    const b = bv, open = still ? 0.85 : lerp(0.58, 1, b), turn = still ? 0 : rot0 + el * 0.011, twist = still ? 0 : 0.55 * (b - 0.5);
+    g2.clearRect(0, 0, W, H);
+
+    /* the light inside grows with the in-breath */
+    const gr = R * lerp(0.75, 1.5, b), grad = g2.createRadialGradient(cx, cy, 0, cx, cy, gr);
+    grad.addColorStop(0, NIGHT); grad.addColorStop(1, 'rgba(74,140,196,0)');
+    g2.globalAlpha = 0.07 + 0.14 * b; g2.fillStyle = grad; g2.fillRect(0, 0, W, H);
+
+    const mark = new Map();
+    const put = (sec, c) => mark.set(N - 1 - Math.min(N - 1, Math.floor(sec / T * N)), c);   /* time runs from the rim inwards */
+    bells().forEach(q => put(S.acc + q, AMBER));
+    if (S.acc > 0) put(S.acc, WINE);
+    if (S.emerge > 0) put(S.acc + S.med, WINE);
+    const base = Math.max(1.3, R * 0.0088), dim = state === 'paused';
+    for (let k = 0; k < N; k++) {
+      const rr = Math.sqrt((I0 + k) / (I0 + N)), out = (rr - RMIN) / (1 - RMIN);
+      const r = R * 0.98 * (RMIN + (rr - RMIN) * open), th = (I0 + k) * GA + turn + twist * out;
+      /* the light comes in from the rim as a soft front, so no dot switches on alone */
+      const lit = state === 'idle' ? 0 : clamp((frac * N - (N - 1 - k)) / (N * 0.07), 0, 1), m = mark.get(k);
+      g2.fillStyle = m || (lit > 0.5 && dim ? MUTE : INK);
+      g2.globalAlpha = m ? lerp(1, 0.45, lit) : lerp(0.13, 0.62 + 0.3 * b, lit);
+      g2.beginPath(); g2.arc(cx + r * Math.cos(th), cy + r * Math.sin(th), base * (m ? 1.7 : lerp(1, 1.25, lit)) * (0.85 + 0.3 * b), 0, TAU); g2.fill();
+    }
+    g2.globalAlpha = 1;
+    if (state === 'running') show();
+    if (state === 'running' || Math.abs(target - bv) > 0.004) requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('scroll', () => { if (state !== 'running') draw(); }, { passive: true });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
+  document.body.dataset.state = 'idle';
+  resize(); showSettings();
+})();
+</script>
+</body>
+</html>
