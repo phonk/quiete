@@ -83,10 +83,9 @@ body[data-state="running"] .set,body[data-state="paused"] .set{opacity:.3;pointe
 .hear{display:flex;justify-content:center;gap:22px;font-size:.8rem;letter-spacing:.04em;color:var(--mute);padding:10px 0 12px;border-top:1px solid var(--line)}
 .hear button:hover{color:var(--amber)}
 
-/* left alone during a session, everything but the breathing shape fades away, the time too; any touch brings it back */
-header,.bar,.foot,.center{transition:opacity .3s}
+/* left alone during a session, everything but the breathing shape and the time fades away; any touch brings it back */
+header,.bar,.foot{transition:opacity .3s}
 body.quiet header,body.quiet .bar,body.quiet .pre,body.quiet .set,body.quiet .foot{opacity:0;pointer-events:none;transition:opacity 1.6s}
-body.quiet .center{opacity:0;transition:opacity 1.6s}
 body.quiet{cursor:none}
 
 /* wide and low, like a tablet on its side: the circle on the left, everything else beside it */
